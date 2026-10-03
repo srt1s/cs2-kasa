@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CS2 Kasa Açma</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0f1218;color:#e6e9ef;font-family:system-ui,sans-serif}
+header{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 20px;background:#171c26;flex-wrap:wrap}
+h1{font-size:20px;margin:0;color:#ffb300}.stat{background:#222a38;padding:6px 12px;border-radius:8px;font-weight:600}
+main{max-width:1000px;margin:auto;padding:20px}.card{background:#171c26;border-radius:12px;padding:16px;margin-bottom:20px}
+button{background:#ffb300;color:#000;border:0;border-radius:8px;padding:10px 16px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}button.sec{background:#2d3748;color:#fff}
+input{padding:10px;border-radius:8px;border:1px solid #333;background:#0f1218;color:#fff}
+#roll{position:relative;overflow:hidden;height:130px;background:#0b0e13;border-radius:10px}
+#strip{display:flex;height:100%;will-change:transform}
+.it{flex:0 0 130px;height:100%;border-bottom:5px solid;display:flex;align-items:center;justify-content:center;text-align:center;font-size:12px;padding:6px;background:#1a2030}
+#pin{position:absolute;left:50%;top:0;bottom:0;width:3px;background:#fff;z-index:2}
+#inv{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.inv{background:#1a2030;border-radius:8px;padding:10px;border-bottom:4px solid;font-size:13px}
+.inv button{margin-top:6px;padding:5px 8px;font-size:12px;width:100%}
+#login{max-width:340px;margin:80px auto;text-align:center}#login input{display:block;width:100%;margin:8px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg{color:#ff6b6b;min-height:20px}
+</style></head><body>
+<div id="login" class="card"><h1>CS2 Kasa Açma</h1><p>Giriş yap veya otomatik kayıt ol (5 ücretsiz anahtar)</p>
+<input id="u" placeholder="Kullanıcı adı"><input id="p" type="password" placeholder="Şifre">
+<button onclick="login()">Giriş / Kayıt</button><p id="lmsg" style="color:#ff6b6b"></p></div>
+<div id="app" style="display:none">
+<header><h1>🔑 CS2 Kasa Açma</h1><div class="row">
+<span class="stat" id="nm"></span><span class="stat">🔑 <b id="keys">0</b></span><span class="stat">💰 <b id="money">0</b></span></div></header>
+<main>
+<div class="card"><h3>Kasa aç (1 anahtar)</h3>
+<div id="roll"><div id="pin"></div><div id="strip"></div></div>
+<p class="row"><button id="openBtn" onclick="openCase()">Kasayı Aç</button><span id="res"></span></p><p id="msg"></p></div>
+<div class="card"><h3>🎁 5 Dakikalık Çekiliş</h3>
+<p>Ödül: <b id="gprize"></b> anahtar · Katılımcı: <b id="gcount">0</b> · Kalan: <b id="gtime">--:--</b></p>
+<button id="joinBtn" onclick="join()">Çekilişe Katıl</button>
+<p id="glast"></p></div>
+<div class="card"><h3>Anahtar al</h3><p>1 anahtar = <b id="kp"></b> 💰</p>
+<div class="row"><input id="kc" type="number" min="1" value="1" style="width:90px"><button onclick="buy()">Satın Al</button></div></div>
+<div class="card"><div class="row" style="justify-content:space-between"><h3>Envanter</h3>
+<button class="sec" onclick="sellAll()">Hepsini sat</button></div><div id="inv"></div></div>
+</main></div>
+<script>
+let token=localStorage.t||'',info,me,gw,spinning=false,timer;
+const $=id=>document.getElementById(id);
+async function api(p,body){const r=await fetch('/api/'+p,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-token':token},body:body?JSON.stringify(body):undefined});
+ const d=await r.json();if(!r.ok){if(r.status==401)logout();throw new Error(d.error)}return d}
+function logout(){localStorage.removeItem('t');token='';clearInterval(timer);$('app').style.display='none';$('login').style.display='block'}
+async function login(){try{const d=await api('login',{name:$('u').value,password:$('p').value});token=d.token;localStorage.t=token;me=d.me;start()}catch(e){$('lmsg').textContent=e.message}}
+function col(s){return info.rarities[s.rarity].color}
+function render(){$('nm').textContent=me.name;$('keys').textContent=me.keys;$('money').textContent=me.money.toFixed(2);
+ $('inv').innerHTML=me.inventory.slice().reverse().map(i=>`<div class="inv" style="border-color:${col(i)}"><b>${i.name}</b><br>${info.rarities[i.rarity].name}<br>💰 ${i.price}<button class="sec" onclick="sell(${i.uid})">Sat</button></div>`).join('')||'<i>Boş</i>'}
+async function start(){info=await api('info');$('kp').textContent=info.keyPrice;
+ try{me=await api('me')}catch{return}$('login').style.display='none';$('app').style.display='block';render();fillStrip();tick();clearInterval(timer);timer=setInterval(tick,1000)}
+function fillStrip(win){const arr=[];for(let i=0;i<60;i++)arr.push(info.skins[Math.floor(Math.random()*info.skins.length)]);
+ if(win)arr[40]=win;$('strip').innerHTML=arr.map(s=>`<div class="it" style="border-color:${col(s)}">${s.name}</div>`).join('');
+ $('strip').style.transition='none';$('strip').style.transform='translateX(0)'}
+async function openCase(){if(spinning)return;$('msg').textContent='';$('res').textContent='';
+ try{const d=await api('open',{});spinning=true;$('openBtn').disabled=true;fillStrip(d.item);
+ const w=$('roll').clientWidth,target=40*130+65+(Math.random()*100-50)-w/2;
+ void $('strip').offsetWidth;$('strip').style.transition='transform 5s cubic-bezier(.1,.7,.1,1)';$('strip').style.transform=`translateX(-${target}px)`;
+ setTimeout(()=>{me=d.me;render();$('res').innerHTML=`<b style="color:${col(d.item)}">${d.item.name}</b> (💰 ${d.item.price})`;spinning=false;$('openBtn').disabled=false},5200)}
+ catch(e){$('msg').textContent=e.message}}
+async function sell(uid){try{me=await api('sell',{uid});render()}catch(e){$('msg').textContent=e.message}}
+async function sellAll(){try{me=await api('sell',{all:true});render()}catch(e){$('msg').textContent=e.message}}
+async function buy(){try{me=await api('buykeys',{count:$('kc').value});render()}catch(e){$('msg').textContent=e.message}}
+async function join(){try{await api('giveaway/join',{});tick()}catch(e){$('msg').textContent=e.message}}
+let lastSeen=0;
+async function tick(){try{gw=await api('giveaway');const s=Math.floor(Math.max(0,gw.next-gw.now)/1000);
+ $('gtime').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+ $('gprize').textContent=gw.prize;$('gcount').textContent=gw.count;$('joinBtn').disabled=gw.joined;$('joinBtn').textContent=gw.joined?'Katıldın ✔':'Çekilişe Katıl';
+ $('glast').textContent=gw.last?(gw.last.winner?`Son kazanan: ${gw.last.winner} (${gw.last.players} kişi)`:'Son çekilişe kimse katılmadı'):'';
+ if(gw.last&&gw.last.at!==lastSeen){lastSeen=gw.last.at;if(!spinning){me=await api('me');render()}}}catch{}}
+if(token)start().catch(logout);
+</script></body></html>
